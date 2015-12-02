@@ -22,9 +22,12 @@ GLaDOSServoControl::GLaDOSServoControl(Servo newServo, uint16_t startPos, uint16
 		_curPos = startPos;
 	}
 
+	_prePos = _curPos;
+	_newPos = _curPos;
+
 	// smooth motion stuff start values
 	_pie = 3.14159; // the cake is a lie!
-	_sineSize = 2000; //general resolution of the servos = lowest microsecond to highest microsecond,approximately
+	_sineSize = 1700; //general resolution of the servos = lowest microsecond to highest microsecond,approximately
 	_eventCycle = _sineSize * 100; //some gigantic number so the nextStep function never runs out of ticks
 	//servo 1 800-2200 decrease to open
 	_sineWaveVar = 0; // sine wave x variable counts from 1 to 1700 (servo resolution) only starts counting after wait# reaches its activation value.
@@ -35,12 +38,13 @@ GLaDOSServoControl::GLaDOSServoControl(Servo newServo, uint16_t startPos, uint16
 	_phaseShift = 0;   //b# lower value = longer wave or higher value=shorter wave this is phase shift or stretch of function b=2pi/(period*2) where period is desired wave size
 	_frequencyOffset = 0;   //c# is x frequency offset = what part of curve want to look at
 	_yOffset = 0;   //d# is y offset  = 0.5*amplitude shifts the curve so it is wholey in 1st quadrant
-	_atEnd = 0;   //trigger value either 0 or 1 to declare that that servo has reached its final position and so servo movement sequence of all servos (once all report per#=1)can end.
+	_atEnd = 1;   //trigger value either 0 or 1 to declare that that servo has reached its final position and so servo movement sequence of all servos (once all report per#=1)can end.
 	_exForCount = 0;
 	_numberOfSinusWaves = 1;
 	_msWaitTime = 10;
-	_startSpeed = 20;
-	_endSpeed = 20;
+	// start and end speed
+	_startSpeed = 5;
+	_endSpeed = 5;
 
 	//_thisServo.writeMicroseconds(_curPos);
 }
@@ -120,55 +124,47 @@ void GLaDOSServoControl::nextStep() {
 		else {_speed = ((_countExtended + 1) / _sineSize) * (_endSpeed - _startSpeed) + _startSpeed;} // start slow end fast
 
 		// servo #1   3 states or cases
-
-		if (_exForCount < _msWaitTime) //condition 1 servo not ready to move yet
+		//if (_exForCount < _msWaitTime) //condition 1 servo not ready to move yet
+		//{
+			//_thisServo.writeMicroseconds(_prePos);
+		//}
+		//else 
+		if (_exForCount > _msWaitTime && _sineWaveVar > _sineSize) //condition 3 motion is done and position is held
 		{
-			_thisServo.writeMicroseconds(_prePos);
-		}
-
-		else if (_exForCount > _msWaitTime && _sineWaveVar > _sineSize) //condition 3 motion is done and position is held
-		{
-			_thisServo.writeMicroseconds(_newPos);
-			_atEnd = 1; //declares this servo is finished with its movement
+			//_thisServo.writeMicroseconds(_curPos);
 			_prePos = _newPos;
+			_newPos = _curPos;
+			_atEnd = 1; //declares this servo is finished with its movement
 		}
 
 		else if (_exForCount > _msWaitTime) //condition 2 sin wave function active with optional hold position while big loop asks other servos for their turn
 		{
-
-			if (_sineWaveVar < _sineSize && _speedTick == 1)  //new position of servo is written
+			//new position of servo is written
+			if (_sineWaveVar < _sineSize && _speedTick == 1)
 			{
 				_curPos = _amplitude * sin((_sineWaveVar) * _phaseShift + _frequencyOffset) + _yOffset; //the math function
 				_speedTick += 1; // start of increment to _exForCount for possible pauses at this position to simulate slow
 				_sineWaveVar += 1; //increments sine wave operator x in y=f(x)
 			}
-			else if (_speedTick > 1 && _speedTick < _speed)  //sine wave is sustained at old value for 1 to speed# as counted by speedtick#
+			//sine wave is sustained at old value for 1 to speed# as counted by speedtick#
+			else if (_speedTick > 1 && _speedTick < _speed)  
 			{
 				//_thisServo.writeMicroseconds(_prePos);
 				_speedTick += 1;  //increments _speedTick to delay the servo at one position along its travel to simulate a speed
 			}
-			else //sine wave is now permitted to continue drawing and moving to points by having speedtick# reset
+			//sine wave is now permitted to continue drawing and moving to points by having speedtick# reset
+			else
 			{
-				_sineWaveVar += 1; //locks out the sine function from going past _sineSize by ever increasing _exForCount#
 				_speedTick = 1; //reset for next sin wave increment  through of sine fun
-
-				if (_sineWaveVar / _sineSize <= 1)  //_exForCount#s is given a positive or negative counter to follow sin wave so speed can be adjusted
-				{_countExtended += 1;}
-				else if (_sineWaveVar / _sineSize > 1 && _sineWaveVar / _sineSize < 2)
-				{_countExtended -= 1;}
-				else if (_sineWaveVar / _sineSize >= 2 && _sineWaveVar / _sineSize < 3)
-				{_countExtended += 1;}
-				else if (_sineWaveVar / _sineSize >= 3 && _sineWaveVar / _sineSize < 4)
-				{_countExtended -= 1;}
-				else if (_sineWaveVar / _sineSize >= 4 && _sineWaveVar / _sineSize < 5)
-				{_countExtended += 1;}
-				else if (_sineWaveVar / _sineSize >= 5 && _sineWaveVar / _sineSize < 6)
-				{_countExtended -= 1;}
-				else if (_sineWaveVar / _sineSize >= 6 && _sineWaveVar / _sineSize < 7)
-				{_countExtended += 1;}
+				_sineWaveVar += 1; //locks out the sine function from going past _sineSize by ever increasing _exForCount#
+				// _exForCount is given a positive or negative counter to follow sin wave so speed can be adjusted
+				float tempCounCheck = _sineWaveVar / _sineSize;
+				if (tempCounCheck <= 1) {_countExtended += 1;}
+				else if (tempCounCheck > 1 && tempCounCheck < 2) {_countExtended -= 1;}
 			}
 		}  //end if statement for case 2
 		_exForCount += 1;
 	}  //############# END OF GLOBAL LOOP FOR ALL SERVOS ############
+
 	_thisServo.writeMicroseconds(_curPos); // push current position to servo
 }

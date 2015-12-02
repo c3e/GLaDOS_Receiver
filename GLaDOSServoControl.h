@@ -27,6 +27,7 @@ public:
 private:
 	Servo _thisServo;
 
+	uint16_t _startPos; // start position
 	uint16_t _prePos; // previous position
 	uint16_t _curPos; // current position
 	uint16_t _newPos; // new end position

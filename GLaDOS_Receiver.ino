@@ -3,8 +3,8 @@
 #include <Wire.h> // I2C Library
 #include "GLaDOSServoControl.h"
 
-#define DEBUG false
-#define DEMO_ROTATE false
+#define DEBUG
+#define DEMO_RNDPOS
 
 #define SLAVE_ADDRESS 0xef // I2C slave address
 #define REG_MAP_SIZE 14
@@ -24,25 +24,24 @@ uint8_t OUT_PIN_HEAD = 11;	// servo head control pin
 volatile uint32_t ulCounter = 0;
 
 #define METRO_REFRESH 20 // servo auto rotate refresh time in milliseconds
-#define STEP_SIZE 10 // servo auto rotate step size
-
 Servo baseServo;
 Servo bodyServo;
 Servo neckServo;
 Servo headServo;
 // pin, startPos, limitMin, limitMax
-GLaDOSServo servoBaseControl(baseServo, 1500, 650, 2400); // 1500
-GLaDOSServo servoBodyControl(bodyServo, 1950, 1000, 2000); // 1950
-GLaDOSServo servoNeckControl(neckServo, 1600, 1130, 1960); // 1600
-GLaDOSServo servoHeadControl(headServo, 1900, 1200, 2000); // 1900
+GLaDOSServoControl servoBaseControl(baseServo, 1500, 650, 2400); // 1500
+GLaDOSServoControl servoBodyControl(bodyServo, 1950, 1000, 2000); // 1950
+GLaDOSServoControl servoNeckControl(neckServo, 1700, 1450, 2000); // 1700
+GLaDOSServoControl servoHeadControl(headServo, 1900, 1200, 2000); // 1900
+
+// init servo control pointer array
+//GLaDOSServoControl servoControls[4] = {servoBaseControl, servoBodyControl, servoNeckControl, servoHeadControl};
 
 // servo index
 #define SERVO_BASE 0
 #define SERVO_BODY 1
 #define SERVO_NECK 2
 #define SERVO_HEAD 3
-
-Metro i2c_servo_metro = Metro(10);
 
 bool newRndPostion = true;
 Metro servoRndPosMetro = Metro(3000);
@@ -63,15 +62,16 @@ void setup()
 	pinMode(OUT_PIN_BODY, OUTPUT);
 	pinMode(OUT_PIN_NECK, OUTPUT);
 	pinMode(OUT_PIN_HEAD, OUTPUT);
-	// init values for servos
+	// attach servos
 	baseServo.attach(OUT_PIN_BASE);
-	baseServo.writeMicroseconds(1500);
 	bodyServo.attach(OUT_PIN_BODY);
-	bodyServo.writeMicroseconds(1950);
 	neckServo.attach(OUT_PIN_NECK);
-	neckServo.writeMicroseconds(1600);
 	headServo.attach(OUT_PIN_HEAD);
-	headServo.writeMicroseconds(1900);
+	// push next (current start) position to servo
+	servoBaseControl.nextStep();
+	servoBodyControl.nextStep();
+	servoNeckControl.nextStep();
+	servoHeadControl.nextStep();
 #ifdef DEBUG
 	Serial.print("Servo Base, ");
 	Serial.print(OUT_PIN_BASE);
@@ -130,30 +130,34 @@ void setup()
 
 bool baseForward = true;
 void loop() {
-#ifdef DEMO_ROTATE
+#ifdef DEMO_RNDPOS
 	if (servoRndPosMetro.check()) {
-		if (baseForward == true && servoBaseControl.isAtEndPos()) {
-#ifdef DEBUG
-			Serial.println("Base moved forward to end, change direction");
-#endif
-			servoBaseControl.setNewPos(servoBaseControl.getRangeMax());
-			baseForward = false;
+		if (servoBaseControl.isAtEndPos() && servoBodyControl.isAtEndPos() 
+			&& servoNeckControl.isAtEndPos() && servoHeadControl.isAtEndPos()) {
+			servoBaseControl.setNewPos(random(servoBaseControl.getRangeMin(), servoBaseControl.getRangeMax()));
+			servoBodyControl.setNewPos(random(servoBodyControl.getRangeMin(), servoBodyControl.getRangeMax()));
+			servoNeckControl.setNewPos(random(servoNeckControl.getRangeMin(), servoNeckControl.getRangeMax()));
+			servoHeadControl.setNewPos(random(servoHeadControl.getRangeMin(), servoHeadControl.getRangeMax()));
+			/*
+			if(baseForward == true) {
+				servoNeckControl.setNewPos(servoNeckControl.getRangeMax());
+				baseForward = false;
+			} else {
+				servoNeckControl.setNewPos(servoNeckControl.getRangeMin());
+				baseForward = true;
+			}
+			*/
+			servoRndPosMetro.interval(random(2000, 5000));
+			servoRndPosMetro.reset();
 		}
-		else if (baseForward == false && servoBaseControl.isAtEndPos()) {
-#ifdef DEBUG
-			Serial.println("Base moved backward to end, change direction");
-#endif
-			servoBaseControl.setNewPos(servoBaseControl.getRangeMin());
-			baseForward = true;
-		}
-
-		servoRndPosMetro.interval(random(2000, 4000));
-		servoRndPosMetro.reset();
 	}
-
-	servoBaseControl.nextStep(); // push next position to servo
 #endif
-}
+
+	servoNeckControl.nextStep();
+	servoBaseControl.nextStep(); // push next position to servo
+	servoBodyControl.nextStep();
+	servoHeadControl.nextStep();
+} // end of main loop
 
 /**
  * I2C
